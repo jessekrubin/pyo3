@@ -9,6 +9,42 @@ use crate::types::string::PyStringMethods;
 use crate::types::PyType;
 use crate::{intern, FromPyObject, Py, PyAny, PyErr, PyResult, Python};
 
+impl FromPyObject<'_> for  Ipv4Addr {
+    fn extract_bound(obj: &Bound<'_, PyAny>) -> PyResult<Self> {
+        match obj.getattr(intern!(obj.py(), "packed")) {
+            Ok(packed) => {
+                if let Ok(packed) = packed.extract::<[u8; 4]>() {
+                    Ok(Ipv4Addr::from(packed))
+                } else {
+                    Err(PyValueError::new_err("invalid packed length"))
+                }
+            }
+            Err(_) => {
+                // We don't have a .packed attribute, so we try to construct an IP from str().
+                obj.str()?.to_cow()?.parse().map_err(PyValueError::new_err)
+            }
+        }
+    }
+}
+
+impl FromPyObject<'_> for Ipv6Addr {
+    fn extract_bound(obj: &Bound<'_, PyAny>) -> PyResult<Self> {
+        match obj.getattr(intern!(obj.py(), "packed")) {
+            Ok(packed) => {
+                if let Ok(packed) = packed.extract::<[u8; 16]>() {
+                    Ok(Ipv6Addr::from(packed))
+                } else {
+                    Err(PyValueError::new_err("invalid packed length"))
+                }
+            }
+            Err(_) => {
+                // We don't have a .packed attribute, so we try to construct an IP from str().
+                obj.str()?.to_cow()?.parse().map_err(PyValueError::new_err)
+            }
+        }
+    }
+}
+
 impl FromPyObject<'_> for IpAddr {
     fn extract_bound(obj: &Bound<'_, PyAny>) -> PyResult<Self> {
         match obj.getattr(intern!(obj.py(), "packed")) {
@@ -126,6 +162,44 @@ mod test_ipaddr {
                 assert_eq!(repr, format!("{py_cls}('{ip}')"));
 
                 let ip2: IpAddr = pyobj.extract().unwrap();
+                assert_eq!(ip, ip2);
+            }
+            roundtrip(py, "127.0.0.1");
+            roundtrip(py, "::1");
+            roundtrip(py, "0.0.0.0");
+        });
+    }
+
+    #[test]
+    fn test_roundtrip_ipv4() {
+        Python::attach(|py| {
+            fn roundtrip(py: Python<'_>, ip: &str) {
+                let ip = Ipv4Addr::from_str(ip).unwrap();
+                let py_cls = "IPv4Address";
+                let pyobj = ip.into_pyobject(py).unwrap();
+                let repr = pyobj.repr().unwrap();
+                let repr = repr.to_string_lossy();
+                assert_eq!(repr, format!("{py_cls}('{ip}')"));
+                let ip2: Ipv4Addr = pyobj.extract().unwrap();
+                assert_eq!(ip, ip2);
+            }
+            roundtrip(py, "127.0.0.1");
+            roundtrip(py, "::1");
+            roundtrip(py, "0.0.0.0");
+        });
+    }
+
+    #[test]
+    fn test_roundtrip_ipv6() {
+        Python::attach(|py| {
+            fn roundtrip(py: Python<'_>, ip: &str) {
+                let ip = Ipv6Addr::from_str(ip).unwrap();
+                let py_cls = "IPv6Address";
+                let pyobj = ip.into_pyobject(py).unwrap();
+                let repr = pyobj.repr().unwrap();
+                let repr = repr.to_string_lossy();
+                assert_eq!(repr, format!("{py_cls}('{ip}')"));
+                let ip2: Ipv6Addr = pyobj.extract().unwrap();
                 assert_eq!(ip, ip2);
             }
             roundtrip(py, "127.0.0.1");
